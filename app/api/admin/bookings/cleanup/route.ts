@@ -32,6 +32,7 @@ export async function POST(req: NextRequest) {
       deletedBookingIds: result.deletedBookingIds,
       retentionDays: days,
     });
+
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || 'Failed to cleanup old bookings.' },

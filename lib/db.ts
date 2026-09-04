@@ -320,10 +320,11 @@ export async function query<T = any>(sql: string, params: any[] = []): Promise<T
   const db = getDb();
   const cleanSql = normalizeSql(sql);
   const stmt = db.prepare(cleanSql);
+  const cleanParams = Array.isArray(params) ? params : [params];
   if (stmt.reader) {
-    return stmt.all(params) as T[];
+    return (cleanParams.length > 0 ? stmt.all(...cleanParams) : stmt.all()) as T[];
   }
-  const info = stmt.run(params);
+  const info = cleanParams.length > 0 ? stmt.run(...cleanParams) : stmt.run();
   return [
     {
       changes: info.changes,
@@ -340,11 +341,13 @@ export async function queryOne<T = any>(sql: string, params: any[] = []): Promis
   const db = getDb();
   const cleanSql = normalizeSql(sql);
   const stmt = db.prepare(cleanSql);
+  const cleanParams = Array.isArray(params) ? params : [params];
   if (!stmt.reader) {
-    stmt.run(params);
+    if (cleanParams.length > 0) stmt.run(...cleanParams);
+    else stmt.run();
     return null;
   }
-  const result = stmt.get(params);
+  const result = cleanParams.length > 0 ? stmt.get(...cleanParams) : stmt.get();
   return (result as T) || null;
 }
 
@@ -360,7 +363,8 @@ export async function execute(sql: string, params: any[] = []): Promise<ExecuteR
   const db = getDb();
   const cleanSql = normalizeSql(sql);
   const stmt = db.prepare(cleanSql);
-  const info = stmt.run(params);
+  const cleanParams = Array.isArray(params) ? params : [params];
+  const info = cleanParams.length > 0 ? stmt.run(...cleanParams) : stmt.run();
   return {
     insertId: Number(info.lastInsertRowid),
     affectedRows: info.changes,
@@ -386,11 +390,12 @@ export async function withTransaction<T>(
     async query<R = any>(sql: string, params: any[] = []): Promise<[R[]]> {
       const cleanSql = normalizeSql(sql);
       const stmt = db.prepare(cleanSql);
+      const cleanParams = Array.isArray(params) ? params : [params];
       if (stmt.reader) {
-        const rows = stmt.all(params) as R[];
+        const rows = (cleanParams.length > 0 ? stmt.all(...cleanParams) : stmt.all()) as R[];
         return [rows];
       }
-      const info = stmt.run(params);
+      const info = cleanParams.length > 0 ? stmt.run(...cleanParams) : stmt.run();
       return [
         [
           {
@@ -403,7 +408,8 @@ export async function withTransaction<T>(
     },
     async execute(sql: string, params: any[] = []): Promise<[ExecuteResult]> {
       const cleanSql = normalizeSql(sql);
-      const info = db.prepare(cleanSql).run(params);
+      const cleanParams = Array.isArray(params) ? params : [params];
+      const info = cleanParams.length > 0 ? db.prepare(cleanSql).run(...cleanParams) : db.prepare(cleanSql).run();
       const result: ExecuteResult = {
         insertId: Number(info.lastInsertRowid),
         affectedRows: info.changes,
@@ -411,6 +417,7 @@ export async function withTransaction<T>(
       return [result];
     },
   };
+
 
   try {
     const result = await callback(connection);

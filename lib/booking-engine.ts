@@ -1,4 +1,4 @@
-import { query, queryOne, withTransaction, DbTransactionConnection } from './db';
+import { query, queryOne, execute, withTransaction, DbTransactionConnection } from './db';
 import { AvailabilityCheckResult, Booking, Room, Flat, RoomSelectionOption } from './types';
 import { toMySQLDateTime, parseDateTimeToDate, normalizeDateYYYYMMDD, normalizeTime24H } from './format';
 
@@ -698,11 +698,16 @@ export async function purgeBookingsOlderThanDays(days: number = 30): Promise<{
 }> {
   try {
     const daysNum = Math.max(1, Number(days) || 30);
+    const cutoffTimestamp = Date.now() - daysNum * 24 * 60 * 60 * 1000;
+    const cutoffDate = new Date(cutoffTimestamp).toISOString().split('T')[0];
+    const cutoffDateTime = new Date(cutoffTimestamp).toISOString().replace('T', ' ').substring(0, 19);
+    const todayDate = new Date().toISOString().split('T')[0];
+
     const oldBookings = await query<{ id: number; booking_id: string }>(
       `SELECT id, booking_id FROM bookings 
-       WHERE check_out_date < date('now', '-' || ? || ' days', 'localtime')
-          OR (created_at < datetime('now', '-' || ? || ' days', 'localtime') AND check_out_date < date('now', 'localtime'))`,
-      [daysNum, daysNum]
+       WHERE check_out_date < ?
+          OR (created_at < ? AND check_out_date < ?)`,
+      [cutoffDate, cutoffDateTime, todayDate]
     );
 
     if (!oldBookings || oldBookings.length === 0) {
@@ -724,6 +729,9 @@ export async function purgeBookingsOlderThanDays(days: number = 30): Promise<{
     return { deletedCount: 0, deletedBookingIds: [] };
   }
 }
+
+
+
 
 /**
  * Permanently deletes a single booking by ID or booking_id.
