@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { query, queryOne } from '@/lib/db';
 import { Booking } from '@/lib/types';
+import { purgeBookingsOlderThanDays } from '@/lib/booking-engine';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,6 +12,9 @@ export async function GET(req: NextRequest) {
     if (!user || user.role !== 'admin') {
       return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
     }
+
+    // Automatically remove bookings older than 30 days to enforce retention policy
+    await purgeBookingsOlderThanDays(30);
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get('search') || '';

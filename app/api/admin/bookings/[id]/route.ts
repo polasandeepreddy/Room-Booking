@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { execute } from '@/lib/db';
-import { getBookingById, updateBookingStatusAtomic } from '@/lib/booking-engine';
+import { getBookingById, updateBookingStatusAtomic, deleteBookingById } from '@/lib/booking-engine';
 import { toMySQLDateTime, normalizeDateYYYYMMDD, normalizeTime24H } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
@@ -107,3 +107,36 @@ export async function PATCH(
     );
   }
 }
+
+export async function DELETE(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const user = await getCurrentUser();
+    if (!user || user.role !== 'admin') {
+      return NextResponse.json({ error: 'Unauthorized: Admin access required.' }, { status: 403 });
+    }
+
+    const booking = await getBookingById(params.id);
+    if (!booking) {
+      return NextResponse.json({ error: 'Booking not found.' }, { status: 404 });
+    }
+
+    const delRes = await deleteBookingById(booking.id);
+    if (!delRes.success) {
+      return NextResponse.json({ error: delRes.error }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: `Booking ${booking.booking_id} deleted permanently.`,
+    });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err.message || 'Failed to delete booking.' },
+      { status: 500 }
+    );
+  }
+}
+

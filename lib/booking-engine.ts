@@ -686,3 +686,61 @@ export async function updateBookingStatusAtomic(
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * Purges booking records older than the specified number of days (default: 30 days).
+ * Relies on check_out_date or created_at being past the 30-day retention window.
+ * Associated booking_rooms records are automatically deleted via ON DELETE CASCADE.
+ */
+export async function purgeBookingsOlderThanDays(days: number = 30): Promise<{
+  deletedCount: number;
+  deletedBookingIds: string[];
+}> {
+  try {
+    const daysNum = Math.max(1, Number(days) || 30);
+    const oldBookings = await query<{ id: number; booking_id: string }>(
+      `SELECT id, booking_id FROM bookings 
+       WHERE check_out_date < date('now', '-' || ? || ' days', 'localtime')
+          OR (created_at < datetime('now', '-' || ? || ' days', 'localtime') AND check_out_date < date('now', 'localtime'))`,
+      [daysNum, daysNum]
+    );
+
+    if (!oldBookings || oldBookings.length === 0) {
+      return { deletedCount: 0, deletedBookingIds: [] };
+    }
+
+    const ids = oldBookings.map((b) => b.id);
+    const bookingIds = oldBookings.map((b) => b.booking_id);
+
+    const placeholders = ids.map(() => '?').join(',');
+    await execute(`DELETE FROM bookings WHERE id IN (${placeholders})`, ids);
+
+    return {
+      deletedCount: ids.length,
+      deletedBookingIds: bookingIds,
+    };
+  } catch (err: any) {
+    console.error('Error purging old bookings:', err);
+    return { deletedCount: 0, deletedBookingIds: [] };
+  }
+}
+
+/**
+ * Permanently deletes a single booking by ID or booking_id.
+ */
+export async function deleteBookingById(
+  idOrBookingId: string | number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const booking = await getBookingById(idOrBookingId);
+    if (!booking) {
+      return { success: false, error: 'Booking not found.' };
+    }
+
+    await execute('DELETE FROM bookings WHERE id = ?', [booking.id]);
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to delete booking.' };
+  }
+}
+

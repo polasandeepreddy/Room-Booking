@@ -64,6 +64,10 @@ export default function AdminDashboardPage() {
   const [adminCancelModalBooking, setAdminCancelModalBooking] = useState<Booking | null>(null);
   const [adminCancelReason, setAdminCancelReason] = useState('Admin canceled your room booking');
   const [adminCancelling, setAdminCancelling] = useState(false);
+  const [adminDeleteModalBooking, setAdminDeleteModalBooking] = useState<Booking | null>(null);
+  const [adminDeleting, setAdminDeleting] = useState(false);
+  const [adminCleanupModalOpen, setAdminCleanupModalOpen] = useState(false);
+  const [adminCleaning, setAdminCleaning] = useState(false);
 
   // Calendar state
   const [calendarView, setCalendarView] = useState<'month' | 'week' | 'day'>('month');
@@ -223,6 +227,57 @@ export default function AdminDashboardPage() {
       showNotification('error', err.message);
     } finally {
       setAdminCancelling(false);
+    }
+  };
+
+  // Delete a single booking permanently
+  const handleDeleteBooking = async (bookingId: number) => {
+    setAdminDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/bookings/${bookingId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification('success', data.message || 'Booking deleted permanently.');
+        loadBookings();
+        loadStats();
+        if (viewBookingModal?.id === bookingId) {
+          setViewBookingModal(null);
+        }
+        setAdminDeleteModalBooking(null);
+      } else {
+        showNotification('error', data.error || 'Failed to delete booking.');
+      }
+    } catch (err: any) {
+      showNotification('error', err.message);
+    } finally {
+      setAdminDeleting(false);
+    }
+  };
+
+  // Clean / Purge bookings older than 30 days
+  const handlePurgeOldBookings = async (days: number = 30) => {
+    setAdminCleaning(true);
+    try {
+      const res = await fetch('/api/admin/bookings/cleanup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showNotification('success', data.message);
+        loadBookings();
+        loadStats();
+        setAdminCleanupModalOpen(false);
+      } else {
+        showNotification('error', data.error || 'Failed to purge old bookings.');
+      }
+    } catch (err: any) {
+      showNotification('error', err.message);
+    } finally {
+      setAdminCleaning(false);
     }
   };
 
@@ -962,6 +1017,36 @@ export default function AdminDashboardPage() {
           {activeTab === 'bookings' && (
             <div className="space-y-6">
               
+              {/* 30-Day Retention Notice & Auto-Clean Action */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-900 border border-slate-800 shadow-md">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-amber-400/10 text-amber-400 border border-amber-400/20 flex items-center justify-center shrink-0">
+                    <Clock className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-xs font-bold text-white">30-Day Auto Retention Active</h4>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 mr-1.5 animate-pulse" />
+                        Enabled
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      Booking records past 30 days are automatically removed from database and Property Management views.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setAdminCleanupModalOpen(true)}
+                  disabled={adminCleaning}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 border border-amber-400/20 text-xs font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>{adminCleaning ? 'Purging...' : 'Purge 30+ Day Bookings'}</span>
+                </button>
+              </div>
+
               {/* Search & Filter Bar */}
               <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
@@ -1119,10 +1204,18 @@ export default function AdminDashboardPage() {
                                     <RefreshCw className="w-3.5 h-3.5" />
                                   </button>
                                 )}
+                                <button
+                                  onClick={() => setAdminDeleteModalBooking(b)}
+                                  className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20"
+                                  title="Delete Booking Record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
                               </div>
                             </td>
                           </tr>
                         ))
+
                       )}
                     </tbody>
                   </table>
@@ -1753,6 +1846,19 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
+                <div className="border-t border-slate-800 pt-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider">Booking Data Retention Policy</h3>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                      30 Days (Active)
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-400">
+                    To maintain database performance and privacy standards, all booking and guest stay records older than 30 days are automatically purged from the system.
+                  </p>
+                </div>
+
+
                 <div className="pt-2">
                   <button
                     type="submit"
@@ -2374,6 +2480,105 @@ export default function AdminDashboardPage() {
         </div>
       )}
 
+      {/* DELETE SINGLE BOOKING MODAL */}
+      {adminDeleteModalBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 text-xs space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-base font-bold text-white">Delete Booking Permanently?</h3>
+              <p className="text-gray-400 mt-1">
+                Are you sure you want to permanently remove booking <strong className="text-amber-400 font-mono">{adminDeleteModalBooking.booking_id}</strong>?
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-800 rounded-xl space-y-1.5 text-gray-300 border border-slate-700">
+              <p><strong>Guest:</strong> {adminDeleteModalBooking.full_name} ({adminDeleteModalBooking.user_email})</p>
+              <p><strong>Stay:</strong> {formatDateDDMMYYYY(adminDeleteModalBooking.check_in_date)} to {formatDateDDMMYYYY(adminDeleteModalBooking.check_out_date)}</p>
+              <p><strong>Room(s):</strong> {adminDeleteModalBooking.rooms_display}</p>
+              <p><strong>Status:</strong> <span className="uppercase font-semibold text-amber-400">{adminDeleteModalBooking.status}</span></p>
+            </div>
+
+            <p className="text-[11px] text-rose-400/90 text-center font-medium">
+              This action cannot be undone and will permanently delete this reservation record.
+            </p>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                disabled={adminDeleting}
+                onClick={() => setAdminDeleteModalBooking(null)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-gray-300 font-semibold hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={adminDeleting}
+                onClick={() => handleDeleteBooking(adminDeleteModalBooking.id)}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white font-bold hover:bg-rose-500 disabled:opacity-50 shadow-lg shadow-rose-600/20"
+              >
+                {adminDeleting ? 'Deleting...' : 'Delete Permanently'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PURGE 30+ DAY OLD BOOKINGS MODAL */}
+      {adminCleanupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 text-xs space-y-4 shadow-2xl">
+            <div className="w-12 h-12 rounded-full bg-amber-400/20 text-amber-400 border border-amber-400/30 flex items-center justify-center mx-auto">
+              <Clock className="w-6 h-6" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-base font-bold text-white">Purge Bookings Older Than 30 Days?</h3>
+              <p className="text-gray-400 mt-1">
+                This will automatically remove all completed or past reservation data where check-out took place more than 30 days ago.
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-slate-800 rounded-xl space-y-2 text-gray-300 border border-slate-700">
+              <div className="flex items-center gap-2 text-emerald-400 font-semibold">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Current & Upcoming reservations are completely safe</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-400 text-[11px]">
+                <span>• Frees up database storage and optimizes search indexes.</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-400 text-[11px]">
+                <span>• Maintains compliance with 30-day retention policies.</span>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                disabled={adminCleaning}
+                onClick={() => setAdminCleanupModalOpen(false)}
+                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-gray-300 font-semibold hover:bg-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={adminCleaning}
+                onClick={() => handlePurgeOldBookings(30)}
+                className="flex-1 py-2.5 rounded-xl bg-amber-400 text-slate-950 font-bold hover:brightness-110 disabled:opacity-50 shadow-lg shadow-amber-400/20"
+              >
+                {adminCleaning ? 'Purging Old Data...' : 'Confirm Purge (30+ Days)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
+
